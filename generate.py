@@ -5,11 +5,38 @@ from tokenizer import Tokenizer
 from time import sleep
 
 
-model_path = "checkpoints/transformer_dev_e1_b80.pt"
+model_path = "checkpoints/transformer_dev_e0_b880.pt"
 
 def is_punctuation(word):
-    """Check if a word is punctuation that shouldn't be adjacent"""
-    return word in ['.', ',', ':', '!', ';', "'", '-', '?']
+    return word in {'.', ',', ':', '!', ';', "'", '-', '?', '"'}
+
+
+def needs_space_before(prev_word, curr_word, quote_open):
+    """Return True if a space should be printed before curr_word."""
+    if prev_word is None:
+        return False
+    # Standard closing punctuation
+    if curr_word in {'.', ',', ':', '!', '?', ';'}:
+        return False
+    # Closing brackets/parens
+    if curr_word in {')', ']', '}'}:
+        return False
+    # Opening brackets/parens — no space after them
+    if prev_word in {'(', '[', '{'}:
+        return False
+    # Apostrophe — attaches to both sides (contractions, possessives)
+    if curr_word == "'" or prev_word == "'":
+        return False
+    # Dash — attaches to both sides
+    if curr_word == '-' or prev_word == '-':
+        return False
+    # Closing quote — no space before it (quote_open=True means we're inside quotes)
+    if curr_word == '"' and quote_open:
+        return False
+    # Word immediately after an opening quote — no space
+    if prev_word == '"' and quote_open:
+        return False
+    return True
 
 
 def sample_with_rules(prob_distribution, previous_word, tokenizer, top_p=0.9):
@@ -130,99 +157,65 @@ def generate_text(model, tokenizer, prompt, max_length=100, top_p=0.9, device='c
     print(f"Starting generation with prompt: '{prompt}'")
     print("Generated text:")
 
-    # Print initial prompt with capitalization and formatting rules
-    for i, word in enumerate(valid_words):
-        # Handle special cases first
+    # Print initial prompt
+    quote_open = False
+    capitalize_next = True
+    prev_display = None
+    for word in valid_words:
         display_word = word
-        if word.lower() == 'i':  # Always capitalize standalone 'i'
+        if word == '"':
+            quote_open = not quote_open
+        elif capitalize_next and not is_punctuation(word):
+            display_word = 'I' if word.lower() == 'i' else word.capitalize()
+            capitalize_next = False
+        elif word.lower() == 'i' and not is_punctuation(word):
             display_word = 'I'
-        elif i == 0:  # First word
-            display_word = word.capitalize()
-        elif i > 0 and (valid_words[i-1] == '.' or valid_words[i-1] == '?' or valid_words[i-1] == '!'):  # Word after period
-            display_word = word.capitalize()
-        
-        # Special spacing rules for initial prompt
-        no_space_before = False
-        if i > 0 and valid_words[i-1] == "'" and (word.lower() == 's' or word.lower() == 'd'):
-            no_space_before = True
-            
-        if i == 0:
-            print(display_word, end="", flush=True)
-        elif is_punctuation(word):
-            print(word, end="", flush=True)
-            if word == '.':
-                print()  # Newline after period
-        else:
-            if no_space_before:
-                print(display_word, end="", flush=True)  # No space for contractions
-            else:
-                print(" " + display_word, end="", flush=True)
-        
-        # Small delay for initial prompt display
+
+        if word in {'.', '!', '?'}:
+            capitalize_next = True
+
+        space = " " if needs_space_before(prev_display, word, quote_open) else ""
+        print(space + display_word, end="", flush=True)
+        prev_display = word
         sleep(0.05)
 
     with torch.no_grad():
         for step in range(max_length):
             try:
-                # Convert current tokens to tensor
                 input_ids = torch.tensor([current_tokens], dtype=torch.long).to(device)
+                logits = model(input_ids)
+                last_logits = logits[0, -1, :]
+                prob_distribution = F.softmax(last_logits.unsqueeze(0), dim=-1)
 
-                # Get model predictions
-                logits = model(input_ids)  # (batch_size, seq_len, vocab_size)
-                
-                # Get logits for the last position (next token prediction)
-                last_logits = logits[0, -1, :]  # (vocab_size,)
-                prob_distribution = F.softmax(last_logits.unsqueeze(0), dim=-1)  # (1, vocab_size)
-
-                # Get previous word for rule checking
                 previous_word = generated_words[-1] if generated_words else None
-
-                # Sample with rules
                 next_token_id, next_word = sample_with_rules(
                     prob_distribution, previous_word, tokenizer, top_p
                 )
 
-                # Handle special formatting rules
-                should_capitalize = False
-                if generated_words:
-                    # Check if previous word was a period
-                    if generated_words[-1] == '.':
-                        should_capitalize = True
-                    # Also capitalize at the very beginning
-                elif not generated_words:
-                    should_capitalize = True
-                
-                # Always capitalize standalone 'i'
-                if next_word.lower() == 'i':
-                    next_word = 'I'
-                elif should_capitalize and not is_punctuation(next_word):
-                    next_word = next_word.capitalize()
+                # Update quote state before deciding spacing
+                if next_word == '"':
+                    quote_open = not quote_open
 
-                # Special spacing rules
-                no_space_before = False
-                if generated_words and generated_words[-1] == "'" and (next_word.lower() == 's' or next_word.lower() == 'd'):
-                    # No space between apostrophe and 's' (contractions like "it's", "that's")
-                    no_space_before = True
+                # Capitalize if needed
+                display_word = next_word
+                if capitalize_next and not is_punctuation(next_word):
+                    display_word = 'I' if next_word.lower() == 'i' else next_word.capitalize()
+                    capitalize_next = False
+                elif next_word.lower() == 'i' and not is_punctuation(next_word):
+                    display_word = 'I'
 
-                # Print the word immediately with proper formatting
-                if is_punctuation(next_word):
-                    print(next_word, end="", flush=True)
-                    if next_word == '.':
-                        print()  # Newline after period
-                else:
-                    if no_space_before:
-                        print(next_word, end="", flush=True)  # No space before 's after apostrophe
-                    else:
-                        print(" " + next_word, end="", flush=True)
-                
-                # Brief pause for real-time effect
+                if next_word in {'.', '!', '?'}:
+                    capitalize_next = True
+
+                space = " " if needs_space_before(prev_display, next_word, quote_open) else ""
+                print(space + display_word, end="", flush=True)
+                prev_display = next_word
+
                 sleep(0.1)
 
-                # Add to our sequences (for model context)
                 current_tokens.append(next_token_id)
                 generated_words.append(next_word)
 
-                # Limit sequence length
                 max_seq_len = 100
                 if len(current_tokens) > max_seq_len:
                     current_tokens = current_tokens[-max_seq_len:]

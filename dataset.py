@@ -8,7 +8,7 @@ import math
 
 
 class ShakespeareDataset(Dataset):
-    def __init__(self, filename="shakespeare_cleaned.txt", tokenizer=None, split="train",
+    def __init__(self, filename="kafka_dostoyevsky.txt", tokenizer=None, split="train",
                  test_split=0.1, seed=42, sequences_per_epoch=100000, min_seq_length=3,
                  max_seq_length=100, overlap_ratio=0.1):
         """
@@ -260,7 +260,7 @@ class ShakespeareDataset(Dataset):
             return torch.tensor(fallback_tokens, dtype=torch.long)
 
 
-def collate_fn(batch: torch.Tensor) -> torch.Tensor:
+def collate_fn(batch: torch.Tensor, pad_token_id: int = 24942) -> torch.Tensor:
     """Collate function for proper autoregressive sequence-to-sequence training."""
     input_ids = [seq[:-1] for seq in batch]  # Input: all except last token
     target_ids = [seq[1:] for seq in batch]   # Target: all except first token (shifted by 1)
@@ -269,12 +269,12 @@ def collate_fn(batch: torch.Tensor) -> torch.Tensor:
     min_length = 2
     filtered_input_ids = []
     filtered_target_ids = []
-    
+
     for inp, tgt in zip(input_ids, target_ids):
         if len(inp) >= min_length and len(tgt) >= min_length:
             filtered_input_ids.append(inp)
             filtered_target_ids.append(tgt)
-    
+
     # If no valid sequences, create minimal sequences
     if not filtered_input_ids:
         dummy_seq = torch.tensor([0, 1], dtype=torch.long)
@@ -282,9 +282,9 @@ def collate_fn(batch: torch.Tensor) -> torch.Tensor:
         filtered_target_ids = [dummy_seq[1:]]
 
     # Pad sequences to same length
-    padded_input_ids = pad_sequence(filtered_input_ids, batch_first=True, padding_value=24942)
+    padded_input_ids = pad_sequence(filtered_input_ids, batch_first=True, padding_value=pad_token_id)
     padded_target_ids = pad_sequence(filtered_target_ids, batch_first=True, padding_value=-100)  # -100 ignored in loss
-    
+
     return padded_input_ids, padded_target_ids
 
 

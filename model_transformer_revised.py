@@ -2,10 +2,6 @@ import torch
 import torch.nn as nn
 import math
 
-# Padding token index (must match dataset.py / collate_fn)
-_PAD_TOKEN_ID = 24942
-
-
 class PositionalEncoding(nn.Module):
     def __init__(self, embedding_dim: int, max_len: int = 5000):
         super().__init__()
@@ -35,10 +31,12 @@ class ShakespeareLM(nn.Module):
                  num_layers: int = 5,
                  dropout: float = 0.2,
                  vocab_size: int = 24943,
+                 pad_token_id: int = 24942,
                  finetune_bert: bool = False,  # Kept for checkpoint compatibility
                  num_heads: int = 8):
         super(ShakespeareLM, self).__init__()
 
+        self.pad_token_id = pad_token_id
         self.embedding_layer = nn.Embedding(vocab_size, embedding_dim)
         self.positional_encoding = PositionalEncoding(embedding_dim)
 
@@ -92,7 +90,7 @@ class ShakespeareLM(nn.Module):
 
         # Fix: apply padding mask so padding tokens don't corrupt real-token gradients.
         if padding_mask is None:
-            padding_mask = (input_tokens == _PAD_TOKEN_ID)    # (batch, seq_len), True = ignore
+            padding_mask = (input_tokens == self.pad_token_id)  # (batch, seq_len), True = ignore
 
         # Convert bool padding mask to float to match causal_mask dtype.
         # PyTorch 2.x requires mask and src_key_padding_mask to be the same type.

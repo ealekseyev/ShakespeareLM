@@ -28,11 +28,15 @@ else:
 print("Using", device)
 
 tokenizer = Tokenizer()
+VOCAB_SIZE = len(tokenizer.inv_tokens) + 1  # +1 for padding token slot
+PAD_TOKEN = len(tokenizer.inv_tokens)       # padding ID = first slot beyond real vocab
+
 train_dataset = ShakespeareDataset(tokenizer=tokenizer)
 test_dataset = ShakespeareDataset(tokenizer=tokenizer)
 
-train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, collate_fn=collate_fn)
-test_dataloader_iter = iter(DataLoader(test_dataset, batch_size=1, shuffle=True, collate_fn=collate_fn))
+_collate = lambda b: collate_fn(b, pad_token_id=PAD_TOKEN)
+train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, collate_fn=_collate)
+test_dataloader_iter = iter(DataLoader(test_dataset, batch_size=1, shuffle=True, collate_fn=_collate))
 
 RESUME = True  # Set to False to start from scratch
 
@@ -47,7 +51,7 @@ def find_latest_checkpoint(folder="checkpoints"):
                 best = (e, b, os.path.join(folder, fname))
     return best  # (epoch, batch, path) or None
 
-model = ShakespeareLM(dropout=dropout).to(device)
+model = ShakespeareLM(dropout=dropout, vocab_size=VOCAB_SIZE, pad_token_id=PAD_TOKEN).to(device)
 start_epoch = 0
 if RESUME:
     latest = find_latest_checkpoint()
