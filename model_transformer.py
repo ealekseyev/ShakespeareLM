@@ -25,7 +25,7 @@ class ShakespeareLM(nn.Module):
     def __init__(self,
                  hidden_size: int = 1648,
                  embedding_dim: int = 768,
-                 num_layers: int = 2,
+                 num_layers: int = 5,
                  dropout: float = 0.2,
                  vocab_size: int = 24943,
                  finetune_bert: bool = False,  # Kept for compatibility
@@ -48,7 +48,8 @@ class ShakespeareLM(nn.Module):
         
         self.transformer_encoder = nn.TransformerEncoder(
             encoder_layer,
-            num_layers=num_layers
+            num_layers=num_layers,
+            enable_nested_tensor=False
         )
 
         # Simple output head for per-token prediction

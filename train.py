@@ -4,19 +4,27 @@ import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
 
-from model_transformer import *
+from model_transformer_revised import *
 from tokenizer import *
+from datetime import datetime
+import os
+import re
 
 # improved hyperparameters
 initial_lr = 1e-3  # Reduced from 1e-3
 e10_lr = 1e-4
 warmup_steps = 1000  # Linear warmup
 
-dropout = 0.01 # Keep at 0.05 for better learning
+dropout = 0.05 # Keep at 0.05 for better learning
 batch_size = 64   # Reduced for better gradient estimates
-max_grad_norm = 0.5  # Gradient clipping
+max_grad_norm = 1.0  # Gradient clipping
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+if torch.cuda.is_available():
+    device = torch.device("cuda")
+elif torch.xpu.is_available():
+    device = torch.device("xpu")
+else:
+    device = torch.device("cpu")
 print("Using", device)
 
 tokenizer = Tokenizer()
@@ -26,11 +34,34 @@ test_dataset = ShakespeareDataset(tokenizer=tokenizer)
 train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, collate_fn=collate_fn)
 test_dataloader_iter = iter(DataLoader(test_dataset, batch_size=1, shuffle=True, collate_fn=collate_fn))
 
+RESUME = True  # Set to False to start from scratch
+
+def find_latest_checkpoint(folder="checkpoints"):
+    best = None
+    pattern = re.compile(r"transformer_dev_e(\d+)_b(\d+)\.pt")
+    for fname in os.listdir(folder):
+        m = pattern.match(fname)
+        if m:
+            e, b = int(m.group(1)), int(m.group(2))
+            if best is None or (e, b) > best[:2]:
+                best = (e, b, os.path.join(folder, fname))
+    return best  # (epoch, batch, path) or None
+
 model = ShakespeareLM(dropout=dropout).to(device)
-print("Model initialized")
-#model.load_state_dict(torch.load("smt_stable.pt", map_location=device))
+start_epoch = 0
+if RESUME:
+    latest = find_latest_checkpoint()
+    if latest:
+        e, b, path = latest
+        model.load_state_dict(torch.load(path, map_location=device))
+        start_epoch = e
+        print(f"Resumed from {path} (epoch {e}, batch {b})")
+    else:
+        print("No checkpoint found, starting from scratch")
+else:
+    print("Model initialized")
 criterion = nn.CrossEntropyLoss(label_smoothing=0.05, ignore_index=-100)  # Reduced label smoothing, ignore padding
-optimizer = optim.Adam(model.parameters(), lr=initial_lr, weight_decay=0.01)  # Added weight decay
+optimizer = optim.Adam(model.parameters(), lr=initial_lr, weight_decay=0.0001)
 scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=50 * 1000, eta_min=1e-6)  # Cosine annealing
 
 # Warmup scheduler
@@ -49,7 +80,7 @@ def rank_tensor_indices(tensor):
     return sorted_indices.tolist()
 
 NUM_EPOCHS = 50
-for i in range(0, NUM_EPOCHS):
+for i in range(start_epoch, NUM_EPOCHS):
     if i == 10:
         adam_update_lr(optimizer, e10_lr)
     # train
@@ -79,7 +110,7 @@ for i in range(0, NUM_EPOCHS):
                 warmup_scheduler.step()
             else:
                 scheduler.step()
-            if batch % 100 == 0:
+            if batch % 10 == 0:
                 model.eval()
                 with torch.no_grad():
                     input_ids, target_ids = next(test_dataloader_iter)
@@ -87,26 +118,32 @@ for i in range(0, NUM_EPOCHS):
                     target_ids = target_ids.to(device)
                     logits = model(input_ids)  # (batch_size, seq_len, vocab_size)
                     
+                    # Validation loss
+                    val_loss = criterion(logits.reshape(-1, logits.size(-1)), target_ids.reshape(-1))
+
                     # Get predictions for the last position
                     last_logits = logits[0, -1, :]  # Last position logits for first sample
                     prob_distribution = F.softmax(last_logits.cpu().unsqueeze(0), dim=-1)
                     batch_sampled = top_p_sample_batch(prob_distribution)
-                    
+
                     # Get input and target words for display
                     input_words = tokenizer.untokenize_text(input_ids[0].cpu().numpy())
                     target_word = tokenizer.untokenize_text(target_ids[0, -1:].cpu().numpy())  # Last target word
-                    
+
                     preds = tokenizer.untokenize_text(rank_tensor_indices(prob_distribution[0])[0:5])
                     top_p_res = tokenizer.untokenize_text([batch_sampled[0]])
-                    
+
                     current_lr = optimizer.param_groups[0]['lr']
-                    print(f"e{i}b{batch}, Loss {round(float(loss), 2)}, LR {current_lr:.2e} | Target: {target_word[0] if target_word else 'N/A'} | Pred: {top_p_res[0]} - [{', '.join(preds)}] | Context: {' '.join(input_words[-10:])}")
+                    t = datetime.now().strftime("%H:%M:%S")
+                    print(f"[{t}] e{i}b{batch}, TrainLoss {round(float(loss.detach()), 2)}, ValLoss {round(float(val_loss), 2)}, LR {current_lr:.2e} | Target: {target_word[0] if target_word else 'N/A'} | Pred: {top_p_res[0]} - [{', '.join(preds)}] | Context: {' '.join(input_words[-10:])}")
                 model.train()
                 if device.type == "cuda":
                     torch.cuda.synchronize()
-                torch.save(model.state_dict(), f"stlm_dev_e{i}_b{batch}.pt")
+                elif device.type == "xpu":
+                    torch.xpu.synchronize()
+                torch.save(model.state_dict(), f"checkpoints/transformer_dev_e{i}_b{batch}.pt")
             else:
-                print(F"e{i}b{batch} loss: {round(float(loss), 2)}")
+                print(f"[{datetime.now().strftime('%H:%M:%S')}] e{i}b{batch} loss: {round(float(loss.detach()), 2)}")
             batch += 1
     except Exception as e:
         print(e)

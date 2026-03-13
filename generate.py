@@ -1,11 +1,11 @@
 import torch
 import torch.nn.functional as F
-from model_transformer import ShakespeareLM
+from model_transformer_revised import ShakespeareLM
 from tokenizer import Tokenizer
 from time import sleep
 
 
-model_path = "stlm_dev_e0_b1000.pt"
+model_path = "checkpoints/transformer_dev_e1_b80.pt"
 
 def is_punctuation(word):
     """Check if a word is punctuation that shouldn't be adjacent"""
