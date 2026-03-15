@@ -28,7 +28,7 @@ class ShakespeareLM(nn.Module):
     def __init__(self,
                  hidden_size: int = 1648,
                  embedding_dim: int = 768,
-                 num_layers: int = 8,
+                 num_layers: int = 7,
                  dropout: float = 0.2,
                  vocab_size: int = 24943,
                  pad_token_id: int = 24942,

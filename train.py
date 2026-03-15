@@ -1,5 +1,6 @@
 from torch.utils.data import DataLoader
 from dataset import *
+import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
@@ -114,7 +115,7 @@ for i in range(start_epoch, NUM_EPOCHS):
                 warmup_scheduler.step()
             else:
                 scheduler.step()
-            if batch % 10 == 0:
+            if batch % 50 == 0:
                 model.eval()
                 with torch.no_grad():
                     input_ids, target_ids = next(test_dataloader_iter)
