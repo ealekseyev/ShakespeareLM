@@ -3,12 +3,15 @@ from torch.utils.data import Dataset
 import random
 import os
 from tokenizer import *
+from config import get_config
 from torch.nn.utils.rnn import pad_sequence
 import math
 
+_corpus_file = get_config()["corpus_file"]
+
 
 class ShakespeareDataset(Dataset):
-    def __init__(self, filename="kafka_dostoyevsky.txt", tokenizer=None, split="train",
+    def __init__(self, filename=None, tokenizer=None, split="train",
                  test_split=0.1, seed=42, sequences_per_epoch=100000, min_seq_length=3,
                  max_seq_length=100, overlap_ratio=0.1):
         """
@@ -25,6 +28,7 @@ class ShakespeareDataset(Dataset):
             max_seq_length: Maximum sequence length in words (default 100)
             overlap_ratio: Ratio of sequences that can have overlapping text (0.1 = 10% can overlap)
         """
+        filename = filename if filename is not None else _corpus_file
         self.filename = filename
         self.tokenizer = tokenizer
         self.split = split

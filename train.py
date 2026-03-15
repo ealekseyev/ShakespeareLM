@@ -12,7 +12,7 @@ import os
 import re
 
 # improved hyperparameters
-initial_lr = 1e-3  # Reduced from 1e-3
+initial_lr = 3e-3
 e10_lr = 1e-4
 warmup_steps = 1000  # Linear warmup
 
@@ -73,6 +73,8 @@ scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=50 * 1000, eta
 warmup_scheduler = optim.lr_scheduler.LinearLR(optimizer, start_factor=0.1, total_iters=warmup_steps)
 step_count = 0
 
+scaler = torch.amp.GradScaler(device.type)
+
 def adam_update_lr(o, new_lr):
     for param_group in o.param_groups:
         param_group['lr'] = new_lr  # New learning rate
@@ -97,17 +99,18 @@ for i in range(start_epoch, NUM_EPOCHS):
             target_ids = target_ids.to(device)
 
             optimizer.zero_grad()
-            logits = model(input_ids)  # (batch_size, seq_len, vocab_size)
-            
-            # Reshape for proper loss computation with sequence-to-sequence
-            loss = criterion(logits.reshape(-1, logits.size(-1)), target_ids.reshape(-1))
-            
-            loss.backward()
-            
-            # Gradient clipping for training stability
+            with torch.autocast(device_type=device.type, dtype=torch.float16):
+                logits = model(input_ids)  # (batch_size, seq_len, vocab_size)
+                loss = criterion(logits.reshape(-1, logits.size(-1)), target_ids.reshape(-1))
+
+            scaler.scale(loss).backward()
+
+            # Unscale before grad clipping so clip threshold is in real gradient units
+            scaler.unscale_(optimizer)
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=max_grad_norm)
-            
-            optimizer.step()
+
+            scaler.step(optimizer)
+            scaler.update()
             
             # Learning rate scheduling
             step_count += 1
@@ -115,14 +118,14 @@ for i in range(start_epoch, NUM_EPOCHS):
                 warmup_scheduler.step()
             else:
                 scheduler.step()
-            if batch % 50 == 0:
+            if batch == 0:
                 model.eval()
-                with torch.no_grad():
+                with torch.no_grad(), torch.autocast(device_type=device.type, dtype=torch.float16):
                     input_ids, target_ids = next(test_dataloader_iter)
                     input_ids = input_ids.to(device)
                     target_ids = target_ids.to(device)
                     logits = model(input_ids)  # (batch_size, seq_len, vocab_size)
-                    
+
                     # Validation loss
                     val_loss = criterion(logits.reshape(-1, logits.size(-1)), target_ids.reshape(-1))
 

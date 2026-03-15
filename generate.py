@@ -231,19 +231,26 @@ def generate_text(model, tokenizer, prompt, max_length=100, top_p=0.5, device='c
 
 
 def pick_checkpoint():
-    """Ask the user for an epoch number and return the corresponding b0 checkpoint path."""
+    """Ask the user for an epoch number and return the latest batch checkpoint for that epoch."""
     import os
     import re
     checkpoint_dir = "checkpoints"
-    pattern = re.compile(r"transformer_dev_e(\d+)_b0\.pt")
-    available = sorted(
-        int(m.group(1))
-        for f in os.listdir(checkpoint_dir)
-        if (m := pattern.match(f))
-    )
-    if not available:
-        print("No b0 checkpoints found in checkpoints/.")
+    pattern = re.compile(r"transformer_dev_e(\d+)_b(\d+)\.pt")
+
+    # Build mapping: epoch -> highest batch number seen
+    epoch_max_batch = {}
+    for f in os.listdir(checkpoint_dir):
+        m = pattern.match(f)
+        if m:
+            e, b = int(m.group(1)), int(m.group(2))
+            if e not in epoch_max_batch or b > epoch_max_batch[e]:
+                epoch_max_batch[e] = b
+
+    if not epoch_max_batch:
+        print("No checkpoints found in checkpoints/.")
         return None
+
+    available = sorted(epoch_max_batch)
     print(f"Available epochs: {available}")
     while True:
         raw = input("Enter epoch number to load: ").strip()
@@ -252,10 +259,13 @@ def pick_checkpoint():
         except ValueError:
             print("Please enter a valid integer.")
             continue
-        if epoch not in available:
+        if epoch not in epoch_max_batch:
             print(f"Epoch {epoch} not found. Available: {available}")
             continue
-        return os.path.join(checkpoint_dir, f"transformer_dev_e{epoch}_b0.pt")
+        batch = epoch_max_batch[epoch]
+        path = os.path.join(checkpoint_dir, f"transformer_dev_e{epoch}_b{batch}.pt")
+        print(f"Loading e{epoch}_b{batch}")
+        return path
 
 
 def main():
