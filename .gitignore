@@ -1,3 +1,6 @@
 .claude/
 CLAUDE.md
 output.txt
+*.pt
+checkpoints/
+models/
