@@ -2,18 +2,20 @@
 diagnostics.py — ShakespeareLM model diagnostic tool
 
 Usage:
-    python diagnostics.py checkpoints/transformer_dev_e3_b500.pt
-    python diagnostics.py checkpoints/transformer_dev_e3_b500.pt --batches 200 --batch-size 16
+    python utils/diagnostics.py versions/v2_kafka_12l/checkpoints/transformer_dev_e3_b500.pt
+    python utils/diagnostics.py versions/v2_kafka_12l/checkpoints/transformer_dev_e3_b500.pt --batches 200 --batch-size 16
 
 Runs validation data through a checkpoint and prints extensive diagnostics
 intended to be fed to an LLM for architectural analysis.
 """
 
+import sys
+import os
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+
 import argparse
 import io
 import math
-import os
-import sys
 from collections import Counter, defaultdict
 
 # Force UTF-8 output so box-drawing chars and dashes don't crash on Windows cp1252
@@ -24,11 +26,24 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
+import importlib.util
 
 from dataset import ShakespeareDataset, collate_fn
-from model_transformer_revised import ShakespeareLM
 from tokenizer import Tokenizer
+from config import get_config
 from torch.utils.data import DataLoader
+
+cfg = get_config()
+
+
+def load_model_class(model_file):
+    spec = importlib.util.spec_from_file_location("model", model_file)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod.ShakespeareLM
+
+
+ShakespeareLM = load_model_class(cfg["model_file"])
 
 SEP = "=" * 80
 

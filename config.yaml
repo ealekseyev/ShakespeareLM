@@ -1,2 +1,1 @@
-token_dir: tokens/kafka_12l
-corpus_file: kafka_dostoyevsky.txt
+active_version: v3_kafka_12l

@@ -1,0 +1,6 @@
+name: v3_kafka_12l
+description: "12-layer transformer, 768-dim, 8 heads, Kafka+Dostoyevsky corpus"
+corpus_file: versions/v3_kafka_12l/kafka_dostoyevsky.txt
+token_dir: versions/v3_kafka_12l/tokens
+checkpoint_dir: versions/v3_kafka_12l/checkpoints
+model_file: versions/v3_kafka_12l/model.py

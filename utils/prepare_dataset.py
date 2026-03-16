@@ -3,13 +3,17 @@ Download and combine Kafka + Dostoyevsky texts from Project Gutenberg,
 then rebuild the word-level tokenizer vocabulary.
 
 Usage:
-    python prepare_dataset.py
+    python utils/prepare_dataset.py
 
 Outputs:
     kafka_dostoyevsky.txt   — combined cleaned corpus
     tokens.pkl              — word→id vocab (overwrites Shakespeare vocab)
     inv_tokens.pkl          — id→word vocab (overwrites Shakespeare vocab)
 """
+
+import sys
+import os
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
 import urllib.request
 import re

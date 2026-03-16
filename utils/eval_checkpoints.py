@@ -1,5 +1,5 @@
 """
-Evaluate all checkpoints in checkpoints/ on 64 validation batches each.
+Evaluate all checkpoints in the active version's checkpoint dir on 64 validation batches each.
 Scoring: rank-decay score (primary), top-1 accuracy, top-5 accuracy.
   - Correct token at rank 1 → 1.0
   - Correct token at rank 2 → 0.8
@@ -10,19 +10,35 @@ Scoring: rank-decay score (primary), top-1 accuracy, top-5 accuracy.
 Padding positions (target == -100) are skipped.
 """
 
+import sys
 import os
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+
 import re
 import queue
 import threading
+import importlib.util
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 
-from model_transformer_revised import ShakespeareLM
+from config import get_config
 from tokenizer import Tokenizer
 from dataset import ShakespeareDataset, collate_fn
 
-CHECKPOINT_DIR = "checkpoints"
+cfg = get_config()
+
+
+def load_model_class(model_file):
+    spec = importlib.util.spec_from_file_location("model", model_file)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod.ShakespeareLM
+
+
+ShakespeareLM = load_model_class(cfg["model_file"])
+
+CHECKPOINT_DIR = cfg["checkpoint_dir"]
 NUM_EVAL_BATCHES = 64
 BATCH_SIZE = 32
 

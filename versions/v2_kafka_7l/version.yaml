@@ -1,0 +1,6 @@
+name: v2_kafka_7l
+description: "7-layer transformer, 768-dim, 8 heads, Kafka+Dostoyevsky corpus"
+corpus_file: versions/v2_kafka_7l/kafka_dostoyevsky.txt
+token_dir: versions/v2_kafka_7l/tokens
+checkpoint_dir: versions/v2_kafka_7l/checkpoints
+model_file: versions/v2_kafka_7l/model.py

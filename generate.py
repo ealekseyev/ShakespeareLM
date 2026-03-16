@@ -1,11 +1,21 @@
 import torch
 import torch.nn.functional as F
-from model_transformer_revised import ShakespeareLM
+import importlib.util
 from tokenizer import Tokenizer
+from config import get_config
 from time import sleep
 
+cfg = get_config()
 
-model_path = "checkpoints/transformer_dev_e11_b250.pt"#"models/kafka_e980_checkpoint.pt"
+
+def load_model_class(model_file):
+    spec = importlib.util.spec_from_file_location("model", model_file)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod.ShakespeareLM, mod.top_p_sample_batch
+
+
+ShakespeareLM, _ = load_model_class(cfg["model_file"])
 
 def is_punctuation(word):
     return word in {'.', ',', ':', '!', ';', "'", '-', '?', '"'}
@@ -234,7 +244,7 @@ def pick_checkpoint():
     """Ask the user for an epoch number and return the latest batch checkpoint for that epoch."""
     import os
     import re
-    checkpoint_dir = "checkpoints"
+    checkpoint_dir = cfg["checkpoint_dir"]
     pattern = re.compile(r"transformer_dev_e(\d+)_b(\d+)\.pt")
 
     # Build mapping: epoch -> highest batch number seen

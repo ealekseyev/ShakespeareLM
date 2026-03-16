@@ -5,11 +5,24 @@ import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
 
-from model_transformer_revised import *
 from tokenizer import *
+from config import get_config
 from datetime import datetime
+import importlib.util
 import os
 import re
+
+cfg = get_config()
+
+
+def load_model_class(model_file):
+    spec = importlib.util.spec_from_file_location("model", model_file)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod.ShakespeareLM, mod.top_p_sample_batch
+
+
+ShakespeareLM, top_p_sample_batch = load_model_class(cfg["model_file"])
 
 # improved hyperparameters
 initial_lr = 3e-3
@@ -41,7 +54,7 @@ test_dataloader_iter = iter(DataLoader(test_dataset, batch_size=1, shuffle=True,
 
 RESUME = True  # Set to False to start from scratch
 
-def find_latest_checkpoint(folder="checkpoints"):
+def find_latest_checkpoint(folder=cfg["checkpoint_dir"]):
     best = None
     pattern = re.compile(r"transformer_dev_e(\d+)_b(\d+)\.pt")
     for fname in os.listdir(folder):
@@ -149,7 +162,7 @@ for i in range(start_epoch, NUM_EPOCHS):
                     torch.cuda.synchronize()
                 elif device.type == "xpu":
                     torch.xpu.synchronize()
-                torch.save(model.state_dict(), f"checkpoints/transformer_dev_e{i}_b{batch}.pt")
+                torch.save(model.state_dict(), os.path.join(cfg["checkpoint_dir"], f"transformer_dev_e{i}_b{batch}.pt"))
             else:
                 print(f"[{datetime.now().strftime('%H:%M:%S')}] e{i}b{batch} loss: {round(float(loss.detach()), 2)}")
             batch += 1
